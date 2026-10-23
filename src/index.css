@@ -1,0 +1,208 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   谱册。
+
+   地子是案面的朱漆：深、哑、润。案上摆放的都是宣纸物件——谱页、次一档的
+   纸、裱上去的金签。纸与漆之间靠真实的投影分开，从不描边，因为纸没有
+   轮廓。标题、界线与需要被看见的分量之处用鎏金，文字用松烟墨而非纯黑。
+
+   这里的宣纸是纸。它永远不是房间。
+--------------------------------------------------------------------------- */
+
+:root {
+  /* 两副字脸，挂在 main.tsx 里 import 的本地 @fontsource 文件上；
+     后面跟着汉字回退栈，保证界面在任何中文系统上都能离线显示。 */
+  --font-book: "Literata Variable", "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC",
+    "STSong", "SimSun", Georgia, serif;
+  --font-label: "Archivo Variable", "Source Han Sans SC", "Noto Sans CJK SC", "PingFang SC",
+    "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+
+  /* 案面：朱漆三档 */
+  --board: #6e1b1a;
+  --board-deep: #45100f;
+  --board-soft: #8c2622;
+
+  /* 纸：宣纸三档 + 装饰性界行色 */
+  --rule: #dccfa8;
+  --sheet: #f1e4c4;
+  --paper: #fbf6e9;
+  --paper-warm: #f5e9ce;
+
+  /* 鎏金：主金 + 可承载文字的深金 + 描金高光 + 压印（仅供非文字） */
+  --kraft: #d9b24c;
+  --kraft-deep: #8f6620;
+  --gold-soft: #e9d08a;
+  --gold-deep: #a87b2b;
+
+  /* 墨：正文与次级文字 */
+  --graphite: #241a12;
+  --graphite-soft: #574636;
+
+  /* 纸落在案上：偏移与模糊，从不是色块。
+     用偏暖的赭墨而非中性灰——纸上落下的是赭墨的影。 */
+  --lift-1: 0 1px 1px rgba(42, 24, 14, 0.22), 0 6px 14px -6px rgba(42, 24, 14, 0.4);
+  --lift-2: 0 2px 3px rgba(42, 24, 14, 0.24), 0 18px 34px -12px rgba(42, 24, 14, 0.52);
+  /* 只有摊开的谱页会用：整张纸从案面抬起来 */
+  --lift-held: 0 4px 8px rgba(42, 24, 14, 0.32), 0 40px 80px -24px rgba(42, 24, 14, 0.68);
+  /* 描出来的控件读作裱在纸上的金签，而不是浮起来的方块 */
+  --glued: inset 0 1px 0 rgba(255, 251, 238, 0.5), inset 0 -1px 0 rgba(42, 24, 14, 0.16);
+  --light-edge: inset 0 1px 0 rgba(255, 251, 238, 0.45);
+  --pressed: inset 0 1px 3px rgba(42, 24, 14, 0.28);
+
+  /* 纸的上界格 */
+  --lattice: 24px;
+  --ruling: rgba(220, 207, 168, 0.55);
+}
+
+@layer base {
+  html {
+    /* 案面的颜色，也是 WebGL 不可用时的兜底：
+       退化到一块平实的朱漆，而不是一张白纸。 */
+    background-color: var(--board);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    /* 底色由背景着色器负责，body 自身不带填充。 */
+    background: transparent;
+    color: var(--graphite);
+    font-family: var(--font-label);
+    font-feature-settings: "kern";
+  }
+
+  ::selection {
+    background-color: var(--kraft);
+    color: var(--graphite);
+  }
+
+  /* 2px 深金，2px 偏移。从不是光环，也从不是发光。 */
+  :focus-visible {
+    outline: 2px solid var(--kraft-deep);
+    outline-offset: 2px;
+  }
+
+  /* 走带、卷帘与谱页都要滚动；在这么深的朱漆上，系统默认的那条白杠
+     看起来像页面被戳了一个洞。 */
+  * {
+    scrollbar-color: var(--board-soft) var(--board-deep);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background-color: var(--board-deep);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--board-soft);
+    border-radius: 5px;
+    border: 2px solid var(--board-deep);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--kraft);
+  }
+}
+
+@layer components {
+  /* --- 案面 -------------------------------------------------------------
+   * 着色器供给流动的光，这一层只叠上漆地的木纹，透明度 0.1。
+   * 这里不画任何可读的东西。
+   * -------------------------------------------------------------------- */
+  .board {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .board::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.1;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='160' height='160' filter='url(%23f)'/></svg>");
+    background-size: 160px 160px;
+  }
+
+  /* --- 谱纸 -------------------------------------------------------------
+   * 每一张页、每一行、每一枚签标的静止高度。没有描边：深度来自投影，
+   * 光从上方来。
+   * -------------------------------------------------------------------- */
+  .sheet {
+    background-color: var(--paper);
+    border-radius: 3px;
+    box-shadow: var(--lift-1);
+  }
+
+  .sheet-raised {
+    box-shadow: var(--lift-2);
+  }
+
+  /* 摊开的一页中的某一部分——题头、谱面、对页、页脚。
+     它们之间用界行细线分割，从不用外描边。 */
+  .page-part {
+    min-height: 0;
+    background-color: inherit;
+  }
+
+  /* 画在宣纸上的真实 24px 界格。它不随内容伸缩：
+     是内容被摆到格子上，而不是格子去迁就内容。 */
+  .squared {
+    background-color: var(--paper);
+    background-image: linear-gradient(to right, var(--ruling) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--ruling) 1px, transparent 1px);
+    background-size: var(--lattice) var(--lattice);
+    background-position: -1px -1px;
+  }
+
+  /* 裱在顶端的金签，以及横贯一栏的书脊带。
+     同一种材料，两种位阶。 */
+  .kraft {
+    background-color: var(--kraft);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='saturate' values='0'/></filter><rect width='120' height='120' filter='url(%23f)' opacity='0.12'/></svg>");
+    background-size: 120px 120px;
+    box-shadow: var(--light-edge);
+  }
+}
+
+@layer utilities {
+  /* 一张被放到案上的纸：它是落下，不是滑进来。 */
+  .lay-down {
+    animation: lay-down 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes lay-down {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  /* 系统里唯一的一道光：低对比、单向、缓慢地掠过一处尚未写出的空白。
+     快速扫光会读作加载指示器，而这个应用刻意不设转圈的东西。 */
+  @keyframes wash {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(100%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lay-down {
+      animation: none;
+    }
+  }
+}

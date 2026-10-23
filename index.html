@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Songscription — 我的琴谱册</title>
+    <!--
+      案面的朱漆色直接写在文档上，好让窗口在 bundle 绘制之前就已经是这个
+      颜色。否则启动时会闪一下白。
+    -->
+    <style>
+      html,
+      body,
+      #root {
+        height: 100%;
+      }
+      html {
+        background-color: #6e1b1a;
+      }
+      body {
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body class="font-label antialiased">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

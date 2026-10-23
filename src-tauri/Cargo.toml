@@ -1,0 +1,27 @@
+[package]
+name = "songscription"
+version = "0.1.0"
+description = "A local catalogue for the songs you have had transcribed"
+edition = "2021"
+rust-version = "1.77"
+
+# The shell is deliberately tiny: SQLite, four file operations, and the window.
+# Every musical fact the app shows is measured in TypeScript, in src/lib/midi.ts,
+# so there is exactly one implementation of the difficult part.
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# `bundled` compiles SQLite from source, so the app has no system dependency and
+# no version to match against whatever a distro happens to ship.
+rusqlite = { version = "0.32", features = ["bundled"] }
+base64 = "0.22"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

@@ -1,0 +1,65 @@
+# dependencies
+node_modules/
+
+# the webview bundle
+dist/
+
+# rust build output — cargo writes hundreds of megabytes here
+src-tauri/target/
+src-tauri/gen/
+
+# testing
+coverage/
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local env files — nothing in this app reads one, but keep secrets out anyway
+.env
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# editor / local agent config
+.vscode/
+.idea/
+.claude/
+.impeccable/
+
+# playwright mcp scratch
+.playwright-mcp/
+
+# local scratch — anything thrown together while working, never meant to ship
+workspace/
+
+# local agent notes and session memory. these hold absolute paths from this
+# machine and notes nobody outside it asked for; keep them off the remote.
+.workbuddy/
+.agent/
+*.local.md
+
+# databases that somehow end up next to the source
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# packaged installers: build them from source, do not commit them
+*.msi
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+
+# an unrelated checkout that landed next to this project — it keeps its own
+# .git, so this only stops this repository from swallowing it
+PornHubBot/

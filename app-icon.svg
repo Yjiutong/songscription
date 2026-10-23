@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- The cover. -->
+  <rect width="1024" height="1024" rx="188" fill="#39432f"/>
+  <!-- A sheet of squared manuscript stock lying on it. -->
+  <rect x="184" y="200" width="656" height="624" rx="10" fill="#fefae0"/>
+  <g stroke="#ccd5ae" stroke-width="2" opacity="0.9">
+    <path d="M184 264h656M184 328h656M184 392h656M184 456h656M184 520h656M184 584h656M184 648h656M184 712h656M184 776h656"/>
+    <path d="M248 200v624M312 200v624M376 200v624M440 200v624M504 200v624M568 200v624M632 200v624M696 200v624M760 200v624"/>
+  </g>
+  <!-- The piece itself: right hand in clay, left hand in graphite. -->
+  <g fill="#b4623a">
+    <rect x="240" y="286" width="112" height="34" rx="8"/>
+    <rect x="392" y="350" width="184" height="34" rx="8"/>
+    <rect x="512" y="414" width="96" height="34" rx="8"/>
+    <rect x="440" y="478" width="152" height="34" rx="8"/>
+    <rect x="552" y="542" width="136" height="34" rx="8"/>
+    <rect x="648" y="606" width="128" height="34" rx="8"/>
+  </g>
+  <g fill="#2a3123">
+    <rect x="240" y="574" width="64" height="30" rx="7"/>
+    <rect x="256" y="638" width="80" height="30" rx="7"/>
+    <rect x="336" y="702" width="64" height="30" rx="7"/>
+  </g>
+</svg>
