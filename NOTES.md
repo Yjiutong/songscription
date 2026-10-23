@@ -43,8 +43,35 @@
   （`GPU process isn't usable`），加 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--disable-gpu-sandbox`
   可绕过；`--disable-gpu` 和 `--use-angle=swiftshader` 都不管用。崩溃现场在
   `%LOCALAPPDATA%\com.songscription.catalogue\EBWebView\Crashpad\reports\`。
-- **谱面高度不能按常数估。** 上加线、下加线会让音符探出谱表，所以 `staff-render.ts` 画完之后用
-  `getBBox()` 重设 `viewBox`；A4 分页也先实测再决定一行一行往回收（`planPages`）。
+- **WebView2 的 GPU 进程起不来时，浏览器会整个自杀。** 在一部分机器上，切到五线谱
+  窗口瞬间只剩底色——整个应用崩溃。库视图好好的，只是因为库不触发 GPU 初始化；
+  谱面画布是第一个真要 GPU 的东西。崩溃转储（`%LOCALAPPDATA%\com.songscription.catalogue\
+  EBWebView\Crashpad\reports\`，用 `workspace/parse-dmp.py` 解析）里四个全是同一条：
+  `FATAL:gpu_data_manager_impl_private.cc:408] GPU process isn't usable. Goodbye.`——
+  GPU 进程反复启动失败后，浏览器进程直接 LOG(FATAL) 自杀。跟前端用 SVG 还是 Canvas
+  毫无关系（先换过一版 Canvas，白换）；跟"GPU 加速光栅化扛不住"也没关系
+  （`--disable-accelerated-2d-canvas --disable-gpu-compositing` 都试过，无效）。
+  修法在 `main.rs`：启动前给 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` 追加
+  `--disable-gpu --enable-unsafe-swiftshader --disable-gpu-sandbox`——不申请硬件加速、
+  允许 WebGL 退到 SwiftShader（背景着色器改跑 CPU）、万一仍要起软件 GPU 进程时
+  去掉沙箱保它能起。三层各对应一种失败原因，代价是渲染全走 CPU。
+
+- **Tauri 自定义协议下运行时 `import()` 分块会整页带崩。** 上面那条 GPU 修法让
+  `五线谱` 视图能走到加载，却立刻报 `Uncaught TypeError: Failed to fetch
+  dynamically imported module: http://tauri.localhost/assets/Staff-*.js`——因为
+  `SongSheet.tsx` 用 `React.lazy(() => import("./Staff"))` 懒加载，而 Tauri 的
+  `asset:` 协议在运行时拉分块会失败（入口 `index-*.js` 正常，只有 `import()` 的
+  分块挂）。这下屏幕只剩底色，看着和 GPU 崩溃一模一样，其实是另一层坑。
+  `Settings.tsx` 里导出用的 `import("@/lib/staff-render")` 等四个也同病。
+  修法：两处都改静态引入（见 `SongSheet.tsx` 顶部、`Settings.tsx` 顶部），不再有
+  运行时分块。桌面端从磁盘加载这点体积无所谓。**教训**：Tauri 应用别用运行时
+  `import()` 拆自己的业务代码分块；`@tauri-apps/api` 那些能用的保留（它们本来就在
+  能正常服务的 chunk 里）。
+- **谱面高度按公式算，上下留余量。** 上加线、下加线会让音符探出谱表，曾经靠画完
+  之后 `getBBox()` 实测重设 `viewBox`。SVG 崩溃（见上条）之后实测这条路没了，
+  `scoreHeight()` 按行数×行高+余量计算，纸上可能多一小条空白——比崩溃便宜。
+  A4 分页（`planPages`）保留了估算/复核两个钩子，如今同出一个公式，复核那道等于
+  白走，留作保险丝。
 - **设置页别静态 import 排版的模块。** `staff-pages` 连着 VexFlow 一兆多，一旦被设置页静态引进
   主包，开门就多背一兆。导出那条路全程动态 `import()`，让它们留在按需的 chunk 里。
 - **`.board` 只有纹理没有底色。** 底色是垫在 -z-10 的 `SiteBackground` 给的。任何盖在主界面上面的

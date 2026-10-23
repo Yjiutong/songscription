@@ -1,8 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { ChevronDown, Download, Printer } from "lucide-react";
 import type { Note } from "@/lib/audio";
 import { buildScore } from "@/lib/notation";
-import { renderToDiv, vexKeyOf, type DrawOptions } from "@/lib/staff-render";
+import {
+  measureRect,
+  renderToHost,
+  renderToSvgHost,
+  vexKeyOf,
+  type DrawOptions,
+} from "@/lib/staff-render";
 import { getPlatform } from "@/lib/platform";
 import {
   exportSheet,
@@ -36,6 +49,8 @@ export function Staff({
   timeSignature,
   keySignature,
   twoHands,
+  position,
+  onSeek,
   className = "",
 }: {
   notes: Note[];
@@ -44,6 +59,10 @@ export function Staff({
   timeSignature: string | null;
   keySignature: string | null;
   twoHands: boolean;
+  /** 播放进行到第几秒——高亮当前小节用，和琴卷图读的是同一个时钟。 */
+  position: number;
+  /** 点了谱面第几小节就跳到那里，和琴卷图的点击定位共用一个入口。 */
+  onSeek: (seconds: number) => void;
   className?: string;
 }) {
   const holder = useRef<HTMLDivElement>(null);
@@ -88,6 +107,42 @@ export function Staff({
     [score, layout, keySignature, visible],
   );
 
+  // 播放位置落在哪个小节。buildScore 按 bpm ?? 120 量化，这里用同一个 bpm 把秒
+  // 折算成拍，两边的小节边界才对得上。
+  const secondsPerQuarter = 60 / (bpm ?? 120);
+  const currentMeasure = Math.max(
+    0,
+    Math.floor(position / secondsPerQuarter / score.beatsPerMeasure),
+  );
+  const highlight = measureRect(currentMeasure, options);
+
+  // 播放跨进新的小节时，把它轻轻送进视野——长曲练到后半段不必自己去找谱到哪了。
+  const followRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    followRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [currentMeasure]);
+
+  // 点哪一小节，播放头就落到那一小节的第一拍——和琴卷图"点任意位置从那里弹起"
+  // 是同一个约定。谱面坐标和屏幕坐标差一个缩放比（正常情况下是 1:1， resize 抖动
+  // 的瞬间除外），先折算再去找那一格。
+  const seekFromClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const bounds = event.currentTarget.getBoundingClientRect();
+      if (bounds.width === 0 || bounds.height === 0) return;
+      const ratio = layout.width / bounds.width;
+      const x = (event.clientX - bounds.left) * ratio;
+      const y = (event.clientY - bounds.top) * ratio;
+      for (let m = 0; m < total; m++) {
+        const r = measureRect(m, options);
+        if (r && x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height) {
+          onSeek(m * score.beatsPerMeasure * secondsPerQuarter);
+          return;
+        }
+      }
+    },
+    [options, total, onSeek, score.beatsPerMeasure, secondsPerQuarter, layout.width],
+  );
+
   // 容器有多宽，谱就有多宽。谱不能自己定宽：它是排在纸上，不是排在屏幕里。
   useEffect(() => {
     const node = holder.current;
@@ -100,26 +155,29 @@ export function Staff({
     return () => observer.disconnect();
   }, []);
 
+  // 界面显示走 Canvas：WebView2 的 SVG 光栅化在部分机器上会把渲染进程整个带崩
+  // （切到五线谱应用就白屏，见 NOTES.md）。scale 跟着设备像素比走，高分屏不糊。
   useEffect(() => {
     const node = holder.current;
     if (!node || total === 0) return;
     try {
-      renderToDiv(node, options);
+      renderToHost(node, options, Math.min(2, window.devicePixelRatio || 1));
       setFailed(null);
     } catch (error) {
       setFailed(error instanceof Error ? error.message : String(error));
     }
   }, [options, total]);
 
+  // SVG 现在只在导出时存在：屏幕上画的是 Canvas。离屏序列化一份，不进渲染树。
   const exportSvg = useCallback(() => {
-    const svg = holder.current?.querySelector("svg");
+    const svg = renderToSvgHost(document.createElement("div"), { ...options, upTo: total });
     if (!svg) return;
     const text = new XMLSerializer().serializeToString(svg);
     saveBlob(
       new Blob([text], { type: "image/svg+xml;charset=utf-8" }),
       `${safeFileName(title)}.svg`,
     );
-  }, [title]);
+  }, [options, title, total]);
 
   // A4 是按全曲排的，跟屏幕上排到第几小节无关——要打印的谱子不会只打一半。
   useEffect(() => {
@@ -197,7 +255,8 @@ export function Staff({
   );
 
   const print = useCallback(() => {
-    const svg = holder.current?.querySelector("svg");
+    // 打印那份 SVG 同样在屏幕外生成——显示归 Canvas，打印归这份字符串。
+    const svg = renderToSvgHost(document.createElement("div"), { ...options, upTo: total });
     if (!svg) return;
     const window_ = window.open("", "_blank");
     if (!window_) return;
@@ -210,7 +269,7 @@ export function Staff({
     window_.document.close();
     window_.focus();
     window_.print();
-  }, [title]);
+  }, [options, title, total]);
 
   if (total === 0) {
     return (
@@ -222,12 +281,29 @@ export function Staff({
 
   return (
     <div className={className}>
-      <div
-        ref={holder}
-        className="overflow-x-hidden rounded-[3px] bg-paper"
-        role="img"
-        aria-label={`${title} 的五线谱，共 ${total} 小节，当前显示 ${visible} 小节`}
-      />
+      <div className="relative">
+        <div
+          ref={holder}
+          onClick={seekFromClick}
+          title="点任意小节，播放就从那里开始"
+          className="cursor-pointer overflow-x-hidden rounded-[3px] bg-paper"
+          role="img"
+          aria-label={`${title} 的五线谱，共 ${total} 小节，当前显示 ${visible} 小节`}
+        />
+        {highlight && (
+          <div
+            ref={followRef}
+            aria-hidden
+            className="pointer-events-none absolute rounded-[2px] bg-kraft/20 ring-1 ring-kraft/50 ring-inset"
+            style={{
+              left: highlight.x,
+              top: highlight.y,
+              width: highlight.width,
+              height: highlight.height,
+            }}
+          />
+        )}
+      </div>
       {failed && (
         <p className="mt-2 text-[12.5px] leading-[1.5] text-kraft-deep">谱没排出来：{failed}</p>
       )}

@@ -18,8 +18,8 @@ import type { Measure, Score, ScoreNote } from "./notation";
  * 难度分，也不知道歌是谁写的。分成这样是有意的——量化（notation.ts）错了可以单
  * 元测试，排版错了可以换引擎，二者不必互相牵连。
  *
- * 两种后端共用同一套绘制代码：界面上用 SVG（放大不糊、能直接打印），导出 PNG 时
- * 用同一个 `draw()` 画到离屏 Canvas 上，省得两份排版慢慢长歪。
+ * 屏幕显示和导出共用同一个 `draw()`：界面上是 Canvas，A4 导出也是 Canvas，只有
+ * "导出 SVG / 打印"那两下在屏幕外序列化一份 SVG，全程不进渲染树。
  */
 
 /** 谱表自己的高度：五条线加上上下留给上加线、下加线的余量。 */
@@ -175,6 +175,35 @@ function lineWidths(count: number, total: number): number[] {
   return widths;
 }
 
+/**
+ * 第 index 个小节画在了哪里（谱面坐标，单位和 layout.width 一致）。
+ *
+ * 屏幕上的高亮层和"点谱面定位"都要问这个问题，而答案只有排版逻辑自己知道——
+ * 每行末行可能更宽（draw 里按 row.length 分宽度）、行首带谱号的那列也宽一格。
+ * 这里按 draw() 的同一条公式反推，两边永远对得上；draw 改了排版，这里必须跟。
+ */
+export function measureRect(
+  index: number,
+  options: DrawOptions,
+): { x: number; y: number; width: number; height: number } | null {
+  const { score, layout } = options;
+  const start = Math.max(0, Math.min(options.from ?? 0, score.measures.length));
+  const shown = Math.min(options.upTo, score.measures.length);
+  if (index < start || index >= shown) return null;
+  const perLine = Math.max(1, layout.measuresPerLine);
+  const line = Math.floor((index - start) / perLine);
+  const rowStart = start + line * perLine;
+  const rowLen = Math.min(perLine, shown - rowStart);
+  const widths = lineWidths(rowLen, layout.width);
+  const column = index - rowStart;
+  return {
+    x: widths.slice(0, column).reduce((sum, w) => sum + w, 0),
+    y: TOP_PAD + line * (systemHeightOf(score) + SYSTEM_GAP),
+    width: widths[column],
+    height: systemHeightOf(score),
+  };
+}
+
 function voiceFor(stave: Stave, measure: Measure, hand: "right" | "left", score: Score): Voice {
   const notes = (hand === "right" ? measure.right : measure.left).map(toStaveNote);
   const voice = new Voice({
@@ -192,7 +221,7 @@ function wholeMeasureRest(score: Score): StaveNote {
   return new StaveNote({ keys: ["b/4"], duration: score.beatsPerMeasure >= 4 ? "wr" : "hr" });
 }
 
-/** 一行谱（单手一行、双手一对）本身的高度。分页时按这个估算，实测用于校正。 */
+/** 一行谱（单手一行、双手一对）本身的高度。分页和画面高度都按它算。 */
 export function systemHeightOf(score: Score): number {
   return score.hands === 2 ? STAVE_HEIGHT + GRAND_GAP : STAVE_HEIGHT;
 }
@@ -215,65 +244,53 @@ export function scoreHeight(score: Score, layout: StaffLayout, upTo: number, fro
 }
 
 /**
- * 画完之后按实际内容重新取景。
+ * 量出这一次需要多高。
  *
- * 音符并不都待在五条线里：一个高音的上加线、一个低音的下加线，都会探出去。
- * 按常数估高度注定估不准——估小了会被 SVG 视口裁掉，估大了一大片空白。所以先照
- * 估算画一遍，再量出真正的包围盒，把 viewBox 改成刚好框住内容的样子。
+ * 以前这里先在屏幕外用 SVG 画一遍再量实际包围盒，因为估高会差那么几个像素。
+ * 后来 SVG 后端整个退到了离屏（见 renderToHost 的注释），屏外量高的那道工序也
+ * 就跟着走了——按公式来，上下各多留几个像素的余量，纸上多一小条空白，比整个
+ * 应用崩溃便宜得多。
  */
-function reframe(svg: SVGSVGElement, width: number): number {
-  let box;
-  try {
-    box = svg.getBBox();
-  } catch {
-    return Number(svg.getAttribute("height") ?? 0); // 尚未挂到文档上时量不了，就按估算的来
-  }
-  if (!box || box.height === 0) return Number(svg.getAttribute("height") ?? 0);
-
-  const pad = 8;
-  const height = Math.ceil(box.height + pad * 2);
-  // 横向留出整整一行的宽度，哪怕行末终结线略微探出来一点也看得见。
-  svg.setAttribute("viewBox", `${-pad} ${box.y - pad} ${width + pad * 2} ${height}`);
-  svg.setAttribute("width", String(width + pad * 2));
-  svg.setAttribute("height", String(height));
-  svg.style.maxWidth = "100%";
-  return height;
+export function measureHeight(options: DrawOptions): number {
+  return scoreHeight(options.score, options.layout, options.upTo, options.from ?? 0);
 }
 
-/** 画到界面里：返回实际画了多少小节。 */
-export function renderToDiv(div: HTMLDivElement, options: DrawOptions): number {
-  div.innerHTML = "";
-  const height = scoreHeight(options.score, options.layout, options.upTo, options.from ?? 0);
-  const renderer = new Renderer(div, Renderer.Backends.SVG);
-  renderer.resize(options.layout.width, height);
-  const drawn = draw(renderer.getContext(), options);
-  const svg = div.querySelector("svg");
-  if (svg) reframe(svg, options.layout.width);
+/**
+ * 画到界面里：Canvas 后端。
+ *
+ * 为什么不是 SVG：WebView2 的 SVG 光栅化在相当一部分机器上会把渲染进程整个带崩
+ * ——切到五线谱，窗口瞬间只剩底色，也就是"整个应用崩溃"。同一个页面里的
+ * WebGL 着色器背景一直跑得好好的，说明崩的不是 GPU，是 SVG 那条路径。Canvas
+ * 走的是另一条（主界面和 A4 导出都在这条路上），所以界面显示改由它承担。
+ *
+ * `scale` 放大内部像素保证高分屏不糊；CSS 尺寸交给宿主（width:100%）。
+ */
+export function renderToHost(host: HTMLDivElement, options: DrawOptions, scale = 1): number {
+  host.innerHTML = "";
+  const canvas = document.createElement("canvas");
+  host.appendChild(canvas);
+  const drawn = renderToCanvas(canvas, options, scale);
+  // VexFlow 的 resize() 会顺手把内联样式写成 layout.width×scale 的像素宽——scale=2
+  // 时画布的 CSS 宽就是容器的两倍，右侧整段被裁掉，看起来像"谱太大显示不全"。
+  // 画完把样式夺回来：谱跟容器一样宽，内在像素照旧是放大的那份，清晰度不受影响。
+  canvas.style.cssText = "display:block;width:100%;height:auto";
   return drawn;
 }
 
 /**
- * 量出这一次真正需要多高。
+ * 画一份 SVG——只给导出用。
  *
- * 导出 PNG 时要先把画布设好尺寸，而那时候还没画，也就还没得量。所以先在屏幕外
- * 用 SVG 后端画一遍同样的一页，问它要实际高度——两条路径共用同一个 draw()，量
- * 出来的数就是等一会儿 canvas 里会画出来的数。
+ * 宿主不需要挂到文档上：挂上去就可能被画出来，而画出来就是崩溃的入口。序列化
+ * 成字符串再交给下载，全程不进渲染树。代价是 getBBox() 量不了，viewBox 按估算
+ * 的高度来，上下可能多几个像素的空白——同样，比崩溃便宜。
  */
-export function measureHeight(options: DrawOptions): number {
-  const fallback = () =>
-    scoreHeight(options.score, options.layout, options.upTo, options.from ?? 0);
-  if (typeof document === "undefined") return fallback();
-  const host = document.createElement("div");
-  host.setAttribute("aria-hidden", "true");
-  host.style.cssText = "position:absolute;left:-99999px;top:0;pointer-events:none";
-  document.body.appendChild(host);
-  try {
-    renderToDiv(host, options);
-    const svg = host.querySelector("svg");
-    return svg ? Number(svg.getAttribute("height")) : fallback();
-  } finally {
-    host.remove();
-  }
+export function renderToSvgHost(host: HTMLDivElement, options: DrawOptions): SVGSVGElement | null {
+  host.innerHTML = "";
+  const height = scoreHeight(options.score, options.layout, options.upTo, options.from ?? 0);
+  const renderer = new Renderer(host, Renderer.Backends.SVG);
+  renderer.resize(options.layout.width, height);
+  draw(renderer.getContext(), options);
+  return host.querySelector("svg");
 }
 
 /**

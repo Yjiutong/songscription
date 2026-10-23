@@ -211,6 +211,33 @@ fn writable(folder: &std::path::Path) -> bool {
 }
 
 fn main() {
+    // WebView2 的 GPU 进程在一部分机器上根本起不来（驱动被拉黑、沙箱被安全软件
+    // 拦截都有可能），而浏览器进程的脾气是：GPU 进程反复失败后直接
+    // `LOG(FATAL) "GPU process isn't usable. Goodbye."` 整个自杀。页面上第一个触发
+    // GPU 初始化的东西（谱面的 2D 画布）一点开，窗口就只剩底色——库视图不碰 GPU，
+    // 所以显得"只有谱面崩"。崩溃转储里四个全是同一条 FATAL，坐实了这个结论。
+    //
+    // 对策分三层：
+    //   --disable-gpu            干脆不申请硬件加速，渲染走 CPU；
+    //   --enable-unsafe-swiftshader  允许 WebGL 退到 SwiftShader（新内核要求显式允许），
+    //                            背景那块着色器还能画，只是跑在 CPU 上；
+    //   --disable-gpu-sandbox    万一内核仍要起一个软件 GPU 进程而它被沙箱挡住
+    //                            （虚拟机里实测过这条能救），去掉沙箱让它能起。
+    // 追加而非覆盖，免得用户自己设的环境变量失效。
+    let mut webview_args =
+        std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
+    for flag in [
+        "--disable-gpu",
+        "--enable-unsafe-swiftshader",
+        "--disable-gpu-sandbox",
+    ] {
+        if !webview_args.contains(flag) {
+            webview_args.push(' ');
+            webview_args.push_str(flag);
+        }
+    }
+    std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", webview_args.trim());
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {

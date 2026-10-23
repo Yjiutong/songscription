@@ -89,7 +89,9 @@ export function packLines(input: {
   budgetOf: (pageIndex: number) => number;
   /** 先估个大概：装 n 行会有多高。 */
   estimate: (count: number) => number;
-  /** 真的量一次：第 fromLine 行到第 toLine 行（不含）有多高。 */
+  /** 复核一遍：第 fromLine 行到第 toLine 行（不含）有多高。如今和 estimate 同出
+   * 一个公式（见 staff-render 的 measureHeight），钩子留着——哪天要恢复实测，
+   * 分页逻辑一行不用动。 */
   measure: (fromLine: number, toLine: number) => number;
 }): PageSlice[] {
   const { lines, measuresPerLine, total, budgetOf, estimate, measure } = input;
@@ -99,7 +101,8 @@ export function packLines(input: {
   let line = 0;
   while (line < lines) {
     const budget = budgetOf(slices.length);
-    // 先按估算一口气装到装不下为止，再回头拿实测的高度往回收。
+    // 先按估算一口气装到装不下为止，再拿 measure 复核往回收。两个钩子如今同源，
+    // 第二道等于白走——但它是分页的保险丝，留着不花钱。
     let take = 1;
     while (line + take < lines && estimate(take + 1) <= budget) take++;
     while (take > 1 && measure(line, line + take) > budget) take--;
@@ -127,7 +130,7 @@ export function planPages(base: DrawOptions, options: SheetOptions): PageSlice[]
   const systemHeight = systemHeightOf(score);
   const lines = Math.max(1, Math.ceil(total / Math.max(1, options.measuresPerLine)));
 
-  // 同一段只量一次：分页过程中会反复问同一段多高。
+  // 同一段只算一次：分页过程中会反复问同一段多高。
   const cache = new Map<string, number>();
   const heightOf = (fromLine: number, toLine: number): number => {
     const from = Math.min(fromLine * options.measuresPerLine, total);

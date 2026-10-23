@@ -32,6 +32,9 @@ export type TopBarProps = {
   searchOpen: boolean;
   filterOpen: boolean;
   asideOpen: boolean;
+  /** 筛选按钮底下弹出的那块面板。内容归主界面管，这里只管摆在哪、什么时候收。 */
+  filterPanel?: React.ReactNode;
+  onCloseFilter?(): void;
 };
 
 export function TopBar(props: TopBarProps) {
@@ -58,14 +61,20 @@ export function TopBar(props: TopBarProps) {
   }, []);
 
   // 点到别处就收起来。用 pointerdown 而不是 click：按下的一瞬间就该收，晚了会
-  // 在菜单和目标之间闪一下。
+  // 在菜单和目标之间闪一下。筛选面板一起管——它俩都是"浮在上面的东西"。
   useEffect(() => {
-    if (!openMenu) return;
+    if (!openMenu && !props.filterOpen) return;
     const down = (event: PointerEvent) => {
-      if (!bar.current?.contains(event.target as Node)) setOpenMenu(null);
+      if (!bar.current?.contains(event.target as Node)) {
+        setOpenMenu(null);
+        props.onCloseFilter?.();
+      }
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpenMenu(null);
+      if (event.key === "Escape") {
+        setOpenMenu(null);
+        props.onCloseFilter?.();
+      }
     };
     window.addEventListener("pointerdown", down);
     window.addEventListener("keydown", escape);
@@ -73,7 +82,7 @@ export function TopBar(props: TopBarProps) {
       window.removeEventListener("pointerdown", down);
       window.removeEventListener("keydown", escape);
     };
-  }, [openMenu]);
+  }, [openMenu, props.filterOpen, props.onCloseFilter]);
 
   const menus: { id: string; label: string; hint: string; items: Item[] }[] = [
     {
@@ -134,6 +143,12 @@ export function TopBar(props: TopBarProps) {
       <IconButton label="筛选" active={props.filterOpen} onClick={props.onToggleFilter} ink={ink}>
         <SlidersHorizontal className="h-[15px] w-[15px]" strokeWidth={1.75} />
       </IconButton>
+
+      {props.filterOpen && props.filterPanel && (
+        // 第三个图标从 x=66 起步（6px 内边距 + 两只 26px 按钮 + 两个 4px 缝），
+        // 面板就贴着它的左缘垂下来。
+        <div className="absolute left-[66px] top-[36px]">{props.filterPanel}</div>
+      )}
 
       <div className="ml-1 flex items-center">
         {menus.map((menu) => (

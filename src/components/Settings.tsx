@@ -10,6 +10,12 @@ import { getPlatform } from "@/lib/platform";
 import type { OutputFile, Platform } from "@/lib/platform/types";
 import type { SheetFormat } from "@/lib/staff-pages";
 import { useAppearance } from "@/lib/appearance";
+// 排版库（VexFlow、@tonejs/midi 等一兆多）。Tauri 的自定义协议在运行时
+// import() 分块会把导出整页带崩，所以直接从顶部静态引入，导出时直接用。
+import * as notation from "@/lib/notation";
+import * as render from "@/lib/staff-render";
+import * as pages from "@/lib/staff-pages";
+import * as audio from "@/lib/audio";
 
 /**
  * 设置。
@@ -120,14 +126,8 @@ export function Settings({ pieces, onClose, onRemoved, onOpenPiece }: SettingsPr
     setNotice(null);
     setBusy(piece.id);
     try {
-      // 排版那些家伙——VexFlow、@tonejs/midi——一共一兆多。开门就要用的界面不该
-      // 为了"也许待会儿会按导出"而拖着它们，所以到这里才卸下来。
-      const [notation, render, pages, audio] = await Promise.all([
-        import("@/lib/notation"),
-        import("@/lib/staff-render"),
-        import("@/lib/staff-pages"),
-        import("@/lib/audio"),
-      ]);
+      // 排版库已在顶部静态引入（Tauri 自定义协议下运行时 import() 会整页带崩），
+      // 这里直接用。
       const notes = await audio.loadNotes(piece.storage_path);
       if (notes.length === 0) {
         setFailure(`《${piece.title}》这个文件里没有音符。`);

@@ -28,6 +28,9 @@ export default defineConfig({
     // WebView2 on Windows and WKWebView on macOS are current Chromium/WebKit.
     target: "chrome110",
     outDir: "dist",
-    emptyOutDir: true,
+    // 覆盖写入，不删整个目录：打包时 tauri 的 beforeBuildCommand 跑 vite，`emptyDir`
+    // 的整目录 rmSync 偶尔会被 Windows 索引/杀软锁住的文件卡掉（EPERM），改成覆盖
+    // 后绕开这个竞态。旧产物只是多占点空间，不影响最终打包。
+    emptyOutDir: false,
   },
 });

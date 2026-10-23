@@ -105,6 +105,8 @@ export function Library({ initial }: { initial: Piece[] }) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [asideOpen, setAsideOpen] = useState(true);
   const [searchFocused, setSearchFocused] = useState(false);
+  // 筛选面板：顶栏第三个图标弹出来的那块。开关归这里，内容在下面。
+  const [filterOpen, setFilterOpen] = useState(false);
 
   // 设置页删了东西之后，这一页的架子要跟着少一格。重新读一遍是最省事也最不会
   // 漏的办法：一个人一辈子上传多少曲子，也不至于让他等。
@@ -120,6 +122,50 @@ export function Library({ initial }: { initial: Piece[] }) {
     const platform = await getPlatform();
     await (which === "output" ? platform.output.openDir() : platform.openLocation());
   };
+
+  // 顶栏第三个图标弹出来的那块。工具栏里那组筛选只在一首曲子够多的时候才露面，
+  // 这一块不一样：从第一首起就在，因为"按难度翻一翻"从来不问藏书多少。
+  const filterPanel = (
+    <div className="w-[15.5rem] rounded-[4px] border border-rule bg-paper p-3.5 shadow-[0_10px_28px_-8px_rgba(20,12,6,0.45)]">
+      <p className="font-label text-[11.5px] font-semibold uppercase tracking-[0.08em] text-graphite-soft">
+        难度
+      </p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <FilterChip
+          active={hardness === "all"}
+          onClick={() => setHardness("all")}
+          label="不限"
+        />
+        {LEVELS.map((l) => (
+          <FilterChip
+            key={l.level}
+            active={hardness === l.level}
+            onClick={() => setHardness((current) => (current === l.level ? "all" : l.level))}
+            label={l.name}
+          />
+        ))}
+      </div>
+      <div className="mt-3 flex items-center justify-between border-t border-rule pt-3">
+        <FilterChip
+          active={onlyFavourites}
+          onClick={() => setOnlyFavourites((value) => !value)}
+          label="只看收藏"
+        />
+        {(onlyFavourites || hardness !== "all") && (
+          <button
+            type="button"
+            onClick={() => {
+              setHardness("all");
+              setOnlyFavourites(false);
+            }}
+            className="font-label text-[12px] text-graphite-soft underline decoration-rule underline-offset-2 transition-colors hover:text-kraft-deep"
+          >
+            清除筛选
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   const open = pieces.find((p) => p.id === openId) ?? null;
   const search = useRef<HTMLInputElement>(null);
@@ -334,13 +380,15 @@ export function Library({ initial }: { initial: Piece[] }) {
       <div className="board flex h-screen flex-col overflow-hidden">
         <TopBar
           searchOpen={searchFocused}
-          filterOpen={onlyFavourites || hardness !== "all"}
+          filterOpen={filterOpen}
           asideOpen={asideOpen}
+          onCloseFilter={() => setFilterOpen(false)}
+          filterPanel={filterPanel}
           onToggleSearch={() => {
             search.current?.focus();
             search.current?.select();
           }}
-          onToggleFilter={() => setOnlyFavourites((value) => !value)}
+          onToggleFilter={() => setFilterOpen((value) => !value)}
           onToggleAside={() => setAsideOpen((value) => !value)}
           onAdd={() => {
             setSettingsOpen(false);
@@ -583,6 +631,9 @@ export function Library({ initial }: { initial: Piece[] }) {
 
               {/* --- the rest of the book --- */}
               <section>
+                {/* ☰ 收起的是这一条：视图、收藏、难度、排序都是翻书时的家具，
+                    收起来书还是那本书。 */}
+                {asideOpen && (
                 <div className={TOOLBAR_BAR}>
                   <h2 className="font-book text-[17px] font-medium text-graphite">
                     {shown.length === pieces.length
@@ -664,6 +715,7 @@ export function Library({ initial }: { initial: Piece[] }) {
                     )}
                   </div>
                 </div>
+                )}
 
                 {shown.length === 0 ? (
                   <NoMatches
@@ -911,6 +963,32 @@ function NoMatches({
 }
 
 /* -------------------------------------------------------------------------- */
+
+/** 筛选面板里的一枚档位：选中就上鎏金，跟工具栏里那套按钮一个脾气。 */
+function FilterChip({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick(): void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-[3px] border px-2 py-[3px] font-label text-[12px] transition-colors ${
+        active
+          ? "border-kraft-deep bg-kraft text-graphite"
+          : "border-rule bg-paper text-graphite-soft hover:bg-paper-warm hover:text-graphite"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
 
 const comparators: Record<Sort, (a: Piece, b: Piece) => number> = {
   recent: (a, b) => +new Date(b.created_at) - +new Date(a.created_at),

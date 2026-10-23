@@ -1,8 +1,9 @@
 "use client";
 
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
-import { FolderOpen, Pencil, Trash2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FolderOpen, Maximize2, Minimize2, Pencil, Trash2, X } from "lucide-react";
 import { Keyboard } from "./Keyboard";
+import { Staff } from "./Staff";
 import { Roll, clock } from "./Roll";
 import { FavouriteButton, LevelMarks, Meter, PlayControl, PractiseButton, usePlayback } from "./kit";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,10 +47,10 @@ import {
 /**
  * 谱面按需加载。
  *
- * VexFlow 连同它的字形表有一兆多，而大多数读者来这一页只是为了弹一下听听。与其
- * 把它摊进每个人首屏要下的包里，不如等有人真的要看谱时才取。
+ * VexFlow 连同它的字形表有一兆多，但 Tauri 的自定义协议在运行时拉动态分块会把
+ * 五线谱视图整页带崩（"Failed to fetch dynamically imported module"），所以这里改成
+ * 静态引入——桌面端从磁盘加载这点体积无所谓，换来的是点开谱子不再白屏。
  */
-const Staff = lazy(() => import("./Staff").then((m) => ({ default: m.Staff })));
 
 export function SongSheet({
   piece,
@@ -76,6 +77,8 @@ export function SongSheet({
   const [noteSaved, setNoteSaved] = useState(false);
   /** 卷帘与谱面共用同一个音符数组，只是两种看法。 */
   const [view, setView] = useState<"roll" | "staff">("roll");
+  /** 谱面的全屏：右边那栏（怎么下手、难度、笔记）收起来，谱面摊满整个页面。 */
+  const [staffFull, setStaffFull] = useState(false);
 
   const source = midiSource(piece);
   const playback = usePlayback(piece.id, source);
@@ -260,7 +263,14 @@ export function SongSheet({
         </header>
 
         {/* ---- two columns, both fitting ---- */}
-        <div className="min-h-0 flex-1 overflow-y-auto lg:grid lg:grid-cols-[1.15fr_1fr] lg:overflow-hidden">
+        {/* 谱面全屏时右栏整个退场，左栏拿满整行——看谱要的是宽度，不是两栏。 */}
+        <div
+          className={`min-h-0 flex-1 overflow-y-auto ${
+            staffFull && view === "staff"
+              ? "lg:grid lg:grid-cols-1 lg:overflow-hidden"
+              : "lg:grid lg:grid-cols-[1.15fr_1fr] lg:overflow-hidden"
+          }`}
+        >
           <div
             className="page-part squared flex min-h-0 flex-col gap-4 border-rule px-4 py-4 md:gap-5 md:px-8 md:py-5 lg:overflow-y-auto lg:border-r"
             style={{ animationDelay: "70ms" }}
@@ -304,6 +314,28 @@ export function SongSheet({
                     五线谱
                   </button>
                 </div>
+
+                {view === "staff" && (
+                  <button
+                    type="button"
+                    onClick={() => setStaffFull((full) => !full)}
+                    aria-pressed={staffFull}
+                    title={staffFull ? "退出全屏，找回右边的笔记" : "全屏看谱，右边一栏先收起来"}
+                    className="inline-flex items-center gap-1.5 rounded-[5px] border border-rule bg-paper px-2.5 py-1 font-label text-[12.5px] font-semibold text-graphite transition-colors hover:bg-paper-warm"
+                  >
+                    {staffFull ? (
+                      <>
+                        <Minimize2 className="h-3.5 w-3.5" aria-hidden />
+                        退出全屏
+                      </>
+                    ) : (
+                      <>
+                        <Maximize2 className="h-3.5 w-3.5" aria-hidden />
+                        全屏
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
 
               {!notes ? (
@@ -317,18 +349,16 @@ export function SongSheet({
                   className="h-[150px] w-full md:h-[188px]"
                 />
               ) : (
-                <Suspense
-                  fallback={<Skeleton className="h-[220px] w-full rounded-[2px]" />}
-                >
-                  <Staff
-                    notes={notes}
-                    title={piece.title}
-                    bpm={piece.tempo_bpm}
-                    timeSignature={piece.time_signature}
-                    keySignature={piece.key_signature}
-                    twoHands={piece.two_hands}
-                  />
-                </Suspense>
+                <Staff
+                  notes={notes}
+                  title={piece.title}
+                  bpm={piece.tempo_bpm}
+                  timeSignature={piece.time_signature}
+                  keySignature={piece.key_signature}
+                  twoHands={piece.two_hands}
+                  position={playback.transport.position}
+                  onSeek={playback.seekTo}
+                />
               )}
 
               <figcaption className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] leading-[1.5] text-graphite-soft">
@@ -346,7 +376,12 @@ export function SongSheet({
                     </span>
                   </>
                 ) : (
-                  <span>按存储在本机里的 MIDI 排出来的谱，可以导出或直接打印。</span>
+                  <span>
+                    点任意小节，播放就从那里弹起，正在弹的小节会亮起来。
+                    {staffFull
+                      ? "全屏中——右边的笔记先收着，点「退出全屏」找回。"
+                      : "要更大的纸面就点「全屏」。"}
+                  </span>
                 )}
               </figcaption>
             </figure>
@@ -382,7 +417,9 @@ export function SongSheet({
           </div>
 
           <div
-            className="page-part flex min-h-0 flex-col gap-5 bg-paper-warm px-4 py-4 md:gap-6 md:px-8 md:py-5 lg:overflow-y-auto"
+            className={`page-part flex min-h-0 flex-col gap-5 bg-paper-warm px-4 py-4 md:gap-6 md:px-8 md:py-5 lg:overflow-y-auto ${
+              staffFull && view === "staff" ? "hidden" : ""
+            }`}
             style={{ animationDelay: "130ms" }}
           >
             <section>
