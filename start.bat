@@ -2,11 +2,12 @@
 rem ---------------------------------------------------------------------------
 rem Songscription launcher
 rem
-rem usage:  start.bat [desktop | web | build]
+rem usage:  start.bat [desktop | web | package]
 rem
 rem   desktop  the app in its own window, with hot reload   (default)
 rem   web      the interface in a browser, no Rust needed
-rem   build    produce an installer under src-tauri\target\release\bundle\
+rem   package  build both deliverables into release\ :
+rem            the one-click installer and the portable single exe
 rem
 rem First run installs dependencies. Everything after that is npm doing the work.
 rem ---------------------------------------------------------------------------
@@ -35,15 +36,15 @@ if "%MODE%"=="" set MODE=desktop
 if /i "%MODE%"=="web" (
   echo Opening the interface in your browser. No Rust toolchain needed.
   call npm run dev
-) else if /i "%MODE%"=="build" (
-  echo Building the installer into src-tauri\target\release\bundle\.
-  call npm run desktop:build
+) else if /i "%MODE%"=="package" (
+  echo Packaging the installer and the portable exe into release\.
+  call npm run package
 ) else if /i "%MODE%"=="desktop" (
   echo Starting Songscription in its own window.
   call npm run desktop
 ) else (
   echo Unknown option "%MODE%".
-  echo usage: start.bat [desktop ^| web ^| build]
+  echo usage: start.bat [desktop ^| web ^| package]
   exit /b 1
 )
 

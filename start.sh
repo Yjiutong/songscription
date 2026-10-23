@@ -2,11 +2,12 @@
 # ---------------------------------------------------------------------------
 # Songscription launcher
 #
-# usage:  ./start.sh [desktop | web | build]
+# usage:  ./start.sh [desktop | web | package]
 #
 #   desktop  the app in its own window, with hot reload   (default)
 #   web      the interface in a browser, no Rust needed
-#   build    produce an installer under src-tauri/target/release/bundle/
+#   package  build both deliverables into release/ :
+#            the one-click installer and the portable single exe
 #
 # First run installs dependencies. Everything after that is npm doing the work.
 # ---------------------------------------------------------------------------
@@ -31,9 +32,9 @@ case "$MODE" in
     echo "Opening the interface in your browser. No Rust toolchain needed."
     npm run dev
     ;;
-  build)
-    echo "Building the installer into src-tauri/target/release/bundle/."
-    npm run desktop:build
+  package)
+    echo "Packaging the installer and the portable exe into release/."
+    npm run package
     ;;
   desktop)
     echo "Starting Songscription in its own window."
@@ -41,7 +42,7 @@ case "$MODE" in
     ;;
   *)
     echo "Unknown option: $MODE"
-    echo "usage: ./start.sh [desktop | web | build]"
+    echo "usage: ./start.sh [desktop | web | package]"
     exit 1
     ;;
 esac

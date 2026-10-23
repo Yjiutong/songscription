@@ -82,7 +82,10 @@ function ShelfSkeleton() {
 
 export function LibrarySkeleton() {
   return (
-    <div className="board min-h-screen">
+    <div className="board flex h-screen flex-col overflow-hidden">
+      {/* 那条 34px 先占住：真界面上它是那条菜单栏，不先占下来，数据到的那一瞬整个骨架会往下跳一格。 */}
+      <div className="h-[34px] shrink-0 border-b border-board-deep/40 bg-board-deep/25" />
+      <div className="flex-1 overflow-hidden">
       <div className={PAGE_SHELL}>
         <header className={HEADER_BAR}>
           <Skeleton className="h-[19px] w-40 bg-graphite/15" />
@@ -122,6 +125,7 @@ export function LibrarySkeleton() {
             ))}
           </div>
         </section>
+      </div>
       </div>
     </div>
   );

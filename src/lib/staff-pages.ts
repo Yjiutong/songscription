@@ -314,17 +314,20 @@ async function bytesOf(blob: Blob): Promise<Uint8Array<ArrayBuffer>> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+export type SheetFile = { name: string; data: Uint8Array<ArrayBuffer>; type: string };
+
 /**
- * 排成 A4 的一册并保存下来。
+ * 排成一沓 A4，把文件交回来——不落到任何地方。
  *
- * PNG 和 JPG 一页一个文件，多页就装进 zip；PDF 始终是一个文件。
+ * 给了 mobile 一个新去处就要分支一次的情况不会发生：谁拿到这些文件，谁决定
+ * 它们往哪儿去。浏览器把它下载下来，桌面应用把它写进那个人指定的文件夹。
  */
-export async function exportSheet(
+export async function renderSheetFiles(
   base: DrawOptions,
   meta: PageMeta,
   options: SheetOptions & { format: SheetFormat },
   onProgress?: (done: number, total: number) => void,
-): Promise<{ pages: number; filename: string }> {
+): Promise<{ pages: number; files: SheetFile[] }> {
   const geometry = a4Geometry(options.dpi);
   const slices = planPages(base, options);
   if (slices.length === 0) throw new Error("这首曲子一个小节也没有");
@@ -341,7 +344,7 @@ export async function exportSheet(
   };
 
   const name = safeFileName(meta.title);
-  const files: { name: string; data: Uint8Array<ArrayBuffer> }[] = [];
+  const files: SheetFile[] = [];
   const jpegs: { jpeg: Uint8Array<ArrayBuffer>; width: number; height: number }[] = [];
 
   for (let index = 0; index < slices.length; index++) {
@@ -366,7 +369,11 @@ export async function exportSheet(
         slices.length === 1
           ? `${name}-A4.${suffix}`
           : `${name}-A4-${String(index + 1).padStart(2, "0")}.${suffix}`;
-      files.push({ name: filename, data: await bytesOf(blob) });
+      files.push({
+        name: filename,
+        data: await bytesOf(blob),
+        type: isPng ? "image/png" : "image/jpeg",
+      });
     }
 
     onProgress?.(index + 1, slices.length);
@@ -376,21 +383,45 @@ export async function exportSheet(
 
   if (options.format === "pdf") {
     const blob = pdfFromJpegs(jpegs);
-    const filename = `${name}-A4.pdf`;
-    saveBlob(blob, filename);
-    return { pages: slices.length, filename };
+    return {
+      pages: slices.length,
+      files: [
+        {
+          name: `${name}-A4.pdf`,
+          data: await bytesOf(blob),
+          type: "application/pdf",
+        },
+      ],
+    };
   }
+
+  return { pages: slices.length, files };
+}
+
+/**
+ * 排成 A4 的一册并下载下来。
+ *
+ * PNG 和 JPG 一页一个文件，多页就装进 zip；PDF 始终是一个文件。桌面应用的路径
+ * 是 renderSheetFiles + 输出目录，参见 src/components/Settings.tsx。
+ */
+export async function exportSheet(
+  base: DrawOptions,
+  meta: PageMeta,
+  options: SheetOptions & { format: SheetFormat },
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ pages: number; filename: string }> {
+  const { pages, files } = await renderSheetFiles(base, meta, options, onProgress);
 
   if (files.length === 1) {
     const file = files[0];
-    const type = options.format === "png" ? "image/png" : "image/jpeg";
-    saveBlob(new Blob([file.data], { type }), file.name);
-    return { pages: 1, filename: file.name };
+    saveBlob(new Blob([file.data], { type: file.type }), file.name);
+    return { pages, filename: file.name };
   }
 
+  const name = safeFileName(meta.title);
   const filename = `${name}-A4.zip`;
   saveBlob(zipStore(files), filename);
-  return { pages: files.length, filename };
+  return { pages, filename };
 }
 
 export function saveBlob(blob: Blob, filename: string): void {

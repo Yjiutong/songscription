@@ -3,10 +3,12 @@ import { ChevronDown, Download, Printer } from "lucide-react";
 import type { Note } from "@/lib/audio";
 import { buildScore } from "@/lib/notation";
 import { renderToDiv, vexKeyOf, type DrawOptions } from "@/lib/staff-render";
+import { getPlatform } from "@/lib/platform";
 import {
   exportSheet,
   keyLabel,
   planPages,
+  renderSheetFiles,
   safeFileName,
   saveBlob,
   type SheetFormat,
@@ -154,17 +156,36 @@ export function Staff({
       setBusy("正在排版…");
       setSaved(null);
       try {
-        const result = await exportSheet(
+        const platform = await getPlatform();
+        const written = await renderSheetFiles(
           { ...options, upTo: total },
           { title, key: keyLabel(keySignature), timeSignature, bpm },
           { dpi, measuresPerLine: perLine, upTo: total, format },
           (done, of) => setBusy(`正在排第 ${done} / ${of} 页`),
         );
-        setSaved(
-          result.pages > 1
-            ? `已保存 ${result.filename}，共 ${result.pages} 页`
-            : `已保存 ${result.filename}`,
-        );
+        // 桌面版写进那个人指定的文件夹；网页版只能下载，平台自己会把话说清楚。
+        if (platform.output.manageable) {
+          for (const file of written.files) {
+            await platform.output.write(file.name, file.data);
+          }
+          const where = await platform.output.dir();
+          setSaved(
+            written.pages > 1
+              ? `已导出 ${written.pages} 页到 ${where}`
+              : `已导出到 ${where}`,
+          );
+        } else {
+          await exportSheet(
+            { ...options, upTo: total },
+            { title, key: keyLabel(keySignature), timeSignature, bpm },
+            { dpi, measuresPerLine: perLine, upTo: total, format },
+          );
+          setSaved(
+            written.pages > 1
+              ? `已下载 ${written.files[0].name}，共 ${written.pages} 页`
+              : `已下载 ${written.files[0].name}`,
+          );
+        }
         setSheetOpen(false);
       } catch (error) {
         setFailed(error instanceof Error ? error.message : String(error));

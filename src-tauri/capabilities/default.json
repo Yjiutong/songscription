@@ -3,5 +3,15 @@
   "identifier": "default",
   "description": "The catalogue window uses the core window APIs and nothing else. Every command it calls is defined by this app (src-tauri/src/main.rs), and app commands are not gated by capabilities.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-close"
+  ]
 }

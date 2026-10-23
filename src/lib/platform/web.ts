@@ -1,6 +1,14 @@
 import initSqlJs, { type Database } from "sql.js";
 import wasmUrl from "sql.js/dist/sql-wasm.wasm?url";
-import type { MidiStore, Platform, SqlEngine, SqlParam } from "./types";
+import type {
+  Background,
+  MidiStore,
+  OutputStore,
+  Platform,
+  SettingsStore,
+  SqlEngine,
+  SqlParam,
+} from "./types";
 
 /**
  * The browser implementation — for `npm run dev` only.
@@ -18,18 +26,23 @@ import type { MidiStore, Platform, SqlEngine, SqlParam } from "./types";
 
 const STORE_SQL = "sql";
 const STORE_MIDI = "midi";
+const STORE_MISC = "misc";
 const DB_KEY = "catalogue.db";
+const SETTINGS_KEY = "settings";
+const BACKGROUND_KEY = "background";
 
 let open: Promise<IDBDatabase> | null = null;
 
 function db(): Promise<IDBDatabase> {
   if (open) return open;
   open = new Promise((resolve, reject) => {
-    const request = indexedDB.open("songscription", 1);
+    // Version 2 added `misc` for the things that are not rows and not songs.
+    const request = indexedDB.open("songscription", 2);
     request.onupgradeneeded = () => {
       const handle = request.result;
       if (!handle.objectStoreNames.contains(STORE_SQL)) handle.createObjectStore(STORE_SQL);
       if (!handle.objectStoreNames.contains(STORE_MIDI)) handle.createObjectStore(STORE_MIDI);
+      if (!handle.objectStoreNames.contains(STORE_MISC)) handle.createObjectStore(STORE_MISC);
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("IndexedDB refused to open."));
@@ -126,10 +139,79 @@ export async function createBrowserPlatform(): Promise<Platform> {
     },
   };
 
+  // --- the things the interface keeps for itself ---------------------------
+  //
+  // A browser cannot be told where to put files, so these three degrade rather
+  // than fail: preferences in localStorage, the background in IndexedDB, and
+  // exports straight to the download folder the browser already owns. Saying so
+  // beats pretending there is a folder.
+
+  const settings: SettingsStore = {
+    all: async () => {
+      const text = localStorage.getItem(SETTINGS_KEY);
+      return text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    },
+    set: async (key, value) => {
+      const table = await settings.all();
+      table[key] = value;
+      localStorage.setItem(SETTINGS_KEY, JSON.stringify(table));
+    },
+  };
+
+  const background: Background = {
+    read: async () => {
+      const saved = await get<{ bytes: Uint8Array; mime: string }>(STORE_MISC, BACKGROUND_KEY);
+      return saved ? { bytes: new Uint8Array(saved.bytes), mime: saved.mime } : null;
+    },
+    write: async (bytes, mime) => {
+      await put(STORE_MISC, BACKGROUND_KEY, { bytes, mime });
+    },
+    clear: () => del(STORE_MISC, BACKGROUND_KEY),
+  };
+
+  const download = (name: string, bytes: Uint8Array) => {
+    const url = URL.createObjectURL(new Blob([bytes.slice().buffer]));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = name;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const output: OutputStore = {
+    // Nothing written this way can be listed or deleted afterwards — the browser
+    // handed it away and forgot about it. The page tells the reader so.
+    manageable: false,
+    dir: async () => "浏览器的下载文件夹（这一版是网页版，不能指定目录）",
+    set: async (dir) => {
+      void dir;
+      throw new Error("网页版不能改输出目录。用 `npm run desktop` 打开桌面应用才行。");
+    },
+    pick: async () => null,
+    list: async () => [],
+    write: async (name, bytes) => download(name, bytes),
+    remove: async () => {
+      throw new Error("网页版无法管理已经下载的文件。");
+    },
+    reveal: async (name) => {
+      void name;
+      throw new Error("网页版没有文件夹可以打开。");
+    },
+    openDir: async () => {
+      throw new Error("网页版没有文件夹可以打开。");
+    },
+  };
+
   return {
     kind: "browser",
     sql: engine(database),
     midi,
+    settings,
+    background,
+    output,
+    openLocation: async () => {
+      throw new Error("网页版没有文件夹可以打开。");
+    },
     location: async () => "this browser's storage (development build — not a folder on disk)",
   };
 }

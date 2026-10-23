@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 /// The one gate. Kept blunt on purpose: a catalogue file name is
 /// `checksum-prefix-title.mid`, so a separator or a leading dot is never
 /// legitimate either.
-fn resolve(dir: &Path, name: &str) -> Result<PathBuf, String> {
+pub(crate) fn resolve(dir: &Path, name: &str) -> Result<PathBuf, String> {
     let rejected = name.is_empty()
         || name.contains('/')
         || name.contains('\\')
@@ -67,7 +67,7 @@ pub fn reveal(dir: &Path, name: &str) -> Result<(), String> {
 /// Open the machine's file manager with this file selected. The app is saying
 /// "here it is" — it is not taking the person anywhere new.
 #[cfg(target_os = "windows")]
-fn show_in_file_manager(path: &Path) -> Result<(), String> {
+pub(crate) fn show_in_file_manager(path: &Path) -> Result<(), String> {
     // explorer.exe exits non-zero even when it succeeds, so the spawn is the
     // only thing worth checking. `/select,` needs the path unquoted in one arg.
     std::process::Command::new("explorer")

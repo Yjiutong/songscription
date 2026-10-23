@@ -17,6 +17,23 @@
   不改名。
 - `screenshots/` 里的图来自最初的 web 版。界面写法没变，但截图上的浏览器外壳已经不属于这个应用。
 
+## 打包
+
+- `npm run package`（`scripts/package.mjs`）编两遍，产物统一放在 `release/`：安装包和便携版单文件
+  exe。两遍共用同一个 `target` 目录，省一份依赖的重编。
+- **便携与否是编译期定死的**，看 `Cargo.toml` 的 `portable` feature（`src/main.rs` 的 `PORTABLE`
+  常量）。不在运行时猜：把安装版的 exe 拖到桌面，文件系统和便携版长得一模一样，可数据该留在原地。
+- 便携版的数据落在 exe 旁边的 `Songscription Data\`。目录写不进去时退回系统目录（真的写一个探针
+  文件来判断，不看属性——ACL、只读介质、公司策略都能让"看起来可写"的目录拒绝写入）。
+- 顺序不能反：先出安装包（里面嵌的是普通版 exe），再切 feature 覆盖 exe，最后把便携版拷出来。
+  脚本会检查 exe 里有没有 `Songscription Data` 这个字符串，用来确认 feature 真的生效了——不然
+  很容易得到一个自己以为是便携版的普通版。
+- 安装包只出 NSIS，不出 MSI：NSIS 的中文向导开箱可用，WiX 的本地化要额外折腾，而体积上 NSIS 也
+  小得多。安装界面语言在 `tauri.conf.json` 的 `bundle.windows.nsis.languages` 里，`SimpChinese`。
+- `webviewInstallMode` 用 `embedBootstrapper`：目标机器没有 WebView2 时，安装包自己把它拉下来。
+  代价是安装包大 1.8 MB。注意这只是安装版的能力——便携版 exe 假设机器上已经有 WebView2（Win11 和
+  较新的 Win10 都自带）。
+
 ## 踩过的坑
 
 - **`cargo build --release` 出来的 exe 是白屏的。** Tauri v2 已经没有 `custom-protocol` feature，
@@ -28,5 +45,9 @@
   `%LOCALAPPDATA%\com.songscription.catalogue\EBWebView\Crashpad\reports\`。
 - **谱面高度不能按常数估。** 上加线、下加线会让音符探出谱表，所以 `staff-render.ts` 画完之后用
   `getBBox()` 重设 `viewBox`；A4 分页也先实测再决定一行一行往回收（`planPages`）。
+- **设置页别静态 import 排版的模块。** `staff-pages` 连着 VexFlow 一兆多，一旦被设置页静态引进
+  主包，开门就多背一兆。导出那条路全程动态 `import()`，让它们留在按需的 chunk 里。
+- **`.board` 只有纹理没有底色。** 底色是垫在 -z-10 的 `SiteBackground` 给的。任何盖在主界面上面的
+  全屏层（设置页）都得自己铺 `bg-board`，不然主界面会从字缝里透上来。
 - **VexFlow 的 `resize()` 会自己乘一遍设备像素比。** 放大导出时要先把目标尺寸乘上 scale 再交给它，
   否则画布只有 1/scale，图的右边和下边会被裁掉。

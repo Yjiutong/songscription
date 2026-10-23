@@ -8,6 +8,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod db;
+mod files;
 mod storage;
 
 use std::path::PathBuf;
@@ -19,6 +20,8 @@ use tauri::{Manager, State};
 
 struct App {
     conn: Mutex<Connection>,
+    /// `<app data>/data` — everything that belongs to this copy of the app.
+    root: PathBuf,
     /// `<app data>/data/midi` — the .mid files live beside the database so a
     /// backup is one folder, not two places that can drift apart.
     midi_dir: PathBuf,
@@ -89,20 +92,136 @@ fn midi_reveal(app: State<'_, App>, name: String) -> Result<(), String> {
 /// saying "somewhere in your app data".
 #[tauri::command]
 fn catalogue_dir(app: State<'_, App>) -> Result<String, String> {
-    let root = app.midi_dir.parent().unwrap_or(&app.midi_dir);
-    Ok(root.display().to_string())
+    Ok(app.root.display().to_string())
+}
+
+// --- the things the interface keeps for itself -----------------------------
+//
+// Background image, exported sheets, a few preferences. None of it is music;
+// all of it has to survive being copied to another machine, which is why it
+// lives on disk next to the database rather than in localStorage.
+
+#[tauri::command]
+fn settings_all(app: State<'_, App>) -> Value {
+    Value::Object(files::read_settings(&app.root))
+}
+
+#[tauri::command]
+fn settings_set(app: State<'_, App>, key: String, value: Value) -> Result<(), String> {
+    files::set_setting(&app.root, &key, value)
+}
+
+#[tauri::command]
+fn background_read(app: State<'_, App>) -> Option<(String, String)> {
+    files::background_read(&app.root)
+}
+
+#[tauri::command]
+fn background_write(app: State<'_, App>, data: String, mime: String) -> Result<(), String> {
+    files::background_write(&app.root, &data, &mime)
+}
+
+#[tauri::command]
+fn background_clear(app: State<'_, App>) -> Result<(), String> {
+    files::background_clear(&app.root)
+}
+
+#[tauri::command]
+fn output_dir(app: State<'_, App>) -> Result<String, String> {
+    Ok(files::output_dir(&app.root).display().to_string())
+}
+
+#[tauri::command]
+fn output_set(app: State<'_, App>, dir: String) -> Result<(), String> {
+    files::output_set(&app.root, &dir)
+}
+
+#[tauri::command]
+fn output_list(app: State<'_, App>) -> Result<Vec<files::OutputFile>, String> {
+    files::output_list(&app.root)
+}
+
+#[tauri::command]
+fn output_write(app: State<'_, App>, name: String, data: String) -> Result<(), String> {
+    files::output_write(&app.root, &name, &data)
+}
+
+#[tauri::command]
+fn output_remove(app: State<'_, App>, name: String) -> Result<(), String> {
+    files::output_remove(&app.root, &name)
+}
+
+#[tauri::command]
+fn output_reveal(app: State<'_, App>, name: String) -> Result<(), String> {
+    files::output_reveal(&app.root, &name)
+}
+
+#[tauri::command]
+fn output_open_dir(app: State<'_, App>) -> Result<(), String> {
+    files::reveal_dir(&files::output_dir(&app.root))
+}
+
+/// Open the catalogue folder itself — the one thing everybody eventually wants
+/// to point a backup at.
+#[tauri::command]
+fn catalogue_open_dir(app: State<'_, App>) -> Result<(), String> {
+    files::reveal_dir(&app.root)
+}
+
+/// 这一份是可携版吗？
+///
+/// 编译期定死，不在运行时猜。猜是不行的：把安装版的 exe 拖到桌面，文件系统
+/// 看起来和便携版一模一样，可数据该留在原地。只有打包的人知道答案。
+#[cfg(feature = "portable")]
+const PORTABLE: bool = true;
+#[cfg(not(feature = "portable"))]
+const PORTABLE: bool = false;
+
+/// 数据放哪儿。
+///
+/// 普通版在系统的应用数据目录里；便携版放在 exe 旁边，这样把整个文件夹拷到
+/// U 盘、拷到另一台机器，曲谱还跟着走。
+///
+/// 但便携版也可能待在一个写不了的地方——Program Files、只读的 U 盘、刻进光盘
+/// 的目录。那就退回应用数据目录：数据挪了地方总比启动不起来强。
+fn data_root(app: &tauri::AppHandle) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    if PORTABLE {
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(folder) = exe.parent() {
+                let beside = folder.join("Songscription Data");
+                if writable(&beside) {
+                    return Ok(beside);
+                }
+            }
+        }
+    }
+    Ok(app.path().app_data_dir()?.join("data"))
+}
+
+/// 能不能在这个目录里写东西。真的写一次，不看属性——ACL、只读介质、公司
+/// 策略都能让一个"看起来可写"的目录拒绝写入。
+fn writable(folder: &std::path::Path) -> bool {
+    if std::fs::create_dir_all(folder).is_err() {
+        return false;
+    }
+    let probe = folder.join(".write-probe");
+    let ok = std::fs::write(&probe, b"1").is_ok();
+    let _ = std::fs::remove_file(&probe);
+    ok
 }
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
-            let root = app.path().app_data_dir()?.join("data");
+            let root = data_root(app.handle())?;
             let midi_dir = root.join("midi");
             std::fs::create_dir_all(&midi_dir)?;
 
             let conn = db::open(&root.join("catalogue.db"))?;
             app.manage(App {
                 conn: Mutex::new(conn),
+                root,
                 midi_dir,
             });
             Ok(())
@@ -116,7 +235,20 @@ fn main() {
             midi_remove,
             midi_exists,
             midi_reveal,
-            catalogue_dir
+            catalogue_dir,
+            settings_all,
+            settings_set,
+            background_read,
+            background_write,
+            background_clear,
+            output_dir,
+            output_set,
+            output_list,
+            output_write,
+            output_remove,
+            output_reveal,
+            output_open_dir,
+            catalogue_open_dir
         ])
         .run(tauri::generate_context!())
         .expect("the Songscription window could not start");

@@ -15,11 +15,15 @@ import {
 } from "@/components/ui/select";
 import { CARD_GRID, HEADER_BAR, PAGE_SHELL, TOOLBAR_BAR } from "@/lib/utils";
 import { deletePiece, listPieces, updatePiece } from "@/lib/db";
+import { getPlatform } from "@/lib/platform";
 import { removeMidi } from "@/lib/storage";
 import { PitchMap } from "./PitchMap";
 import { SongCard, SongRow, Summary } from "./SongCard";
 import { SongSheet } from "./SongSheet";
 import { AddSong } from "./AddSong";
+import { Settings } from "./Settings";
+import { Shortcuts } from "./Shortcuts";
+import { TopBar } from "./TopBar";
 import {
   midiSource,
   lastPractised,
@@ -95,6 +99,28 @@ export function Library({ initial }: { initial: Piece[] }) {
   const [sort, setSort] = useState<Sort>("recent");
   const [openId, setOpenId] = useState<string | null>(null);
 
+  // 顶上那条的三个图标管的都是这一页自己的开关：╡ tools 收不收、搜索框有没有
+  // 抓在手里、是不是正在筛。它们是状态而不是装饰，所以点在 návrh 上要有反映。
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [asideOpen, setAsideOpen] = useState(true);
+  const [searchFocused, setSearchFocused] = useState(false);
+
+  // 设置页删了东西之后，这一页的架子要跟着少一格。重新读一遍是最省事也最不会
+  // 漏的办法：一个人一辈子上传多少曲子，也不至于让他等。
+  const reloadPieces = async () => {
+    try {
+      setPieces(await listPieces());
+    } catch {
+      // 读不回来就保留眼前这一版，下一次点开再说。
+    }
+  };
+
+  const openFolder = async (which: "catalogue" | "output") => {
+    const platform = await getPlatform();
+    await (which === "output" ? platform.output.openDir() : platform.openLocation());
+  };
+
   const open = pieces.find((p) => p.id === openId) ?? null;
   const search = useRef<HTMLInputElement>(null);
 
@@ -142,6 +168,14 @@ export function Library({ initial }: { initial: Piece[] }) {
       if (arrow && !openId && onTheDesk.length > 1) {
         e.preventDefault();
         flip(e.key === "ArrowRight" ? 1 : -1);
+        return;
+      }
+
+      // Ctrl/Cmd+, opens settings: what every other application on the machine
+      // has meant by it for twenty years.
+      if (e.key === "," && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setSettingsOpen((v) => !v);
         return;
       }
 
@@ -297,8 +331,36 @@ export function Library({ initial }: { initial: Piece[] }) {
         />
       )}
 
-      <div className="board min-h-screen">
-        <div className={PAGE_SHELL}>
+      <div className="board flex h-screen flex-col overflow-hidden">
+        <TopBar
+          searchOpen={searchFocused}
+          filterOpen={onlyFavourites || hardness !== "all"}
+          asideOpen={asideOpen}
+          onToggleSearch={() => {
+            search.current?.focus();
+            search.current?.select();
+          }}
+          onToggleFilter={() => setOnlyFavourites((value) => !value)}
+          onToggleAside={() => setAsideOpen((value) => !value)}
+          onAdd={() => {
+            setSettingsOpen(false);
+            document.getElementById(ADD_SONG_AT)?.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
+          }}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenCatalogue={() => void openFolder("catalogue")}
+          onOpenOutput={() => void openFolder("output")}
+          onReload={() => window.location.reload()}
+          onShortcuts={() => setShortcutsOpen(true)}
+          onAbout={() => setSettingsOpen(true)}
+        />
+
+        {shortcutsOpen && <Shortcuts onClose={() => setShortcutsOpen(false)} />}
+
+        <div className="relative flex-1 overflow-y-auto">
+          <div className={PAGE_SHELL}>
           {/* --- the label glued across the cover --- */}
           <header className={HEADER_BAR}>
             <h1 className="font-book text-[19px] font-semibold tracking-[-0.01em] text-graphite">
@@ -322,6 +384,8 @@ export function Library({ initial }: { initial: Piece[] }) {
                 ref={search}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
                 placeholder="搜索曲目"
                 aria-keyshortcuts="Control+F /"
                 className="pl-9 pr-[4.5rem] transition-colors hover:border-graphite-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-kraft-deep"
@@ -655,7 +719,7 @@ export function Library({ initial }: { initial: Piece[] }) {
                 )}
               </section>
 
-              <section className="mt-16 max-w-[46rem]">
+              <section id={ADD_SONG_AT} className="mt-16 max-w-[46rem] scroll-mt-8">
                 <h2 className="kraft mb-5 inline-block rounded-[3px] px-3.5 py-1.5 font-book text-[17px] font-medium text-graphite shadow-lift">
                   Add a song
                 </h2>
@@ -664,10 +728,26 @@ export function Library({ initial }: { initial: Piece[] }) {
             </>
           )}
         </div>
+
+        {settingsOpen && (
+          <Settings
+            pieces={pieces}
+            onClose={() => setSettingsOpen(false)}
+            onRemoved={() => void reloadPieces()}
+            onOpenPiece={(id) => {
+              setSettingsOpen(false);
+              setOpenId(id);
+            }}
+          />
+        )}
+        </div>
       </div>
     </>
   );
 }
+
+/** Where "add a song" lives, so the menu can scroll to it rather than pretend. */
+const ADD_SONG_AT = "add-a-song";
 
 /* -------------------------------------------------------------------------- */
 

@@ -91,13 +91,30 @@ shipped that way.
 npm install
 
 npm run desktop        # the app, in a real window, with hot reload
-npm run desktop:build  # an installer in src-tauri/target/release/bundle/
+npm run package        # builds both: the installer and the portable single exe
 
 npm run dev            # the interface in a browser, no Rust needed (development only)
 npm test               # 74 unit tests, including the SQL against a real SQLite
 ```
 
 No environment variables, no keys, no service to start.
+
+### Two exes, two occasions
+
+`npm run package` compiles twice and leaves both in `release/`:
+
+| File | How to use it | Where the songs live |
+|---|---|---|
+| `Songscription-0.1.0-x64-setup.exe` | Double-click to install. Chinese wizard, per-user, no admin rights | The system application-data directory |
+| `Songscription-0.1.0-portable-x64.exe` | No installation; runs from wherever it sits | `Songscription Data\` beside the exe |
+
+The portable build puts everything in one file: copy it to a USB stick, copy it to another Windows
+machine with WebView2, and the catalogue goes with it. If it finds itself somewhere it cannot write —
+Program Files, a write-protected stick — it falls back to the system directory rather than refusing to
+start. To move it, move `Songscription Data` along with it; that folder is the whole of its world.
+
+The two builds are feature for feature the same. The installer gets you a Start-menu entry and a clean
+uninstall; the portable one leaves no trace, and deleting the folder is the uninstall.
 
 ### If the Rust build is not an option
 
@@ -126,6 +143,12 @@ it cannot give you is a double-click app or a folder you can back up.
   thereafter, page numbers at the foot, a gilt rule between header and staff. How many systems fit is
   measured rather than estimated, and breaks fall only between measures. It exports to PNG or JPG (one
   file a page, zipped when there are several) or to PDF (one booklet, a JPEG embedded per page).
+
+- **The things in the window are yours to arrange.** A menu bar runs along the top (edit / window /
+  help / about), and its colour follows the cover: a dark picture darkens it, a snowy one turns it
+  pale, and the lettering follows. The settings page (Ctrl+, or from the menu) keeps four things:
+  the cover picture, every piece in the book (open, favourite, delete), the export format and
+  definition, and the output folder with the files already in it.
 - **Uploads are checked once, then stored.** Extension, emptiness and a 2 MB ceiling; SHA-256 of the
   bytes for the duplicate check and for the file's name on disk.
 - **Search folds accents.** "fur elise" finds "Für Elise", because that is what everyone types.

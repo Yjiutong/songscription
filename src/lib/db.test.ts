@@ -46,6 +46,26 @@ function memoryPlatform(): Platform {
       exists: async () => false,
       reveal: async () => {},
     },
+    // 组和 output 在 SQL 测试里压根用不上，所以给的是"什么都答应"的版本。
+    // 哪天数据层开始读写它们，这里会先报错——那正是它该做的。
+    settings: { all: async () => ({}), set: async () => {} },
+    background: {
+      read: async () => null,
+      write: async () => {},
+      clear: async () => {},
+    },
+    output: {
+      manageable: false,
+      dir: async () => ":memory:",
+      set: async () => {},
+      pick: async () => null,
+      list: async () => [],
+      write: async () => {},
+      remove: async () => {},
+      reveal: async () => {},
+      openDir: async () => {},
+    },
+    openLocation: async () => {},
     location: async () => ":memory:",
   };
 }

@@ -13,13 +13,14 @@
     "windows": [
       {
         "label": "main",
-        "title": "Songscription",
+        "title": "Songscription — 我的琴谱册",
         "width": 1320,
         "height": 880,
         "minWidth": 880,
         "minHeight": 620,
         "resizable": true,
-        "center": true
+        "center": true,
+        "decorations": false
       }
     ],
     "security": {
@@ -28,16 +29,28 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "category": "Music",
-    "shortDescription": "Your transcribed songs, measured",
-    "longDescription": "A catalogue for the songs you have had transcribed. Each one is measured from its own MIDI file: how long it takes, how hard it is, which keys it uses, and how to start learning it. Plays in the window.",
+    "shortDescription": "把扒下来的谱子收成一册",
+    "longDescription": "一份「已经扒下来的谱子」的目录册。每一首都从它自己的 MIDI 文件里量出来：弹完要多久、有多难、用到哪些键、该从哪儿开始练。就着窗口就能听，也能排成五线谱印出来。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "nsis": {
+        "languages": ["SimpChinese"],
+        "displayLanguageSelector": false,
+        "installMode": "currentUser",
+        "startMenuFolder": "Songscription",
+        "installerIcon": "icons/icon.ico"
+      }
+    }
   }
 }

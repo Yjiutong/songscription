@@ -1,5 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { MidiStore, Platform, SqlEngine, SqlParam } from "./types";
+import type {
+  Background,
+  MidiStore,
+  OutputFile,
+  OutputStore,
+  Platform,
+  SettingsStore,
+  SqlEngine,
+  SqlParam,
+} from "./types";
 
 /**
  * The desktop implementation.
@@ -49,6 +58,55 @@ export function createDesktopPlatform(): Platform {
     kind: "desktop",
     sql,
     midi,
+    settings,
+    background,
+    output,
     location: () => invoke<string>("catalogue_dir"),
+    openLocation: () => invoke<void>("catalogue_open_dir"),
   };
 }
+
+// --- the things the interface keeps for itself -----------------------------
+//
+// Same deal as the rest of the bridge: Rust holds the bytes and nothing else.
+// It does not know what a background picture is for.
+
+const settings: SettingsStore = {
+  all: () => invoke<Record<string, unknown>>("settings_all"),
+  set: (key, value) => invoke<void>("settings_set", { key, value }),
+};
+
+const background: Background = {
+  // Rust answers Option<(mime, base64)> — a tuple, which arrives as a two-part
+  // array. One bright idea down the line ("let's return an object") would not
+  // have been wrong either; this one at least cannot be half-nulled.
+  read: async () => {
+    const pair = await invoke<[string, string] | null>("background_read");
+    return pair ? { mime: pair[0], bytes: fromBase64(pair[1]) } : null;
+  },
+  write: (bytes, mime) => invoke<void>("background_write", { data: toBase64(bytes), mime }),
+  clear: () => invoke<void>("background_clear"),
+};
+
+const output: OutputStore = {
+  // Real files in a real folder, so they can be listed, opened and deleted.
+  manageable: true,
+  dir: () => invoke<string>("output_dir"),
+  set: (dir) => invoke<void>("output_set", { dir }),
+  pick: async () => {
+    // Loaded on use: the dialog plugin is a few kilobytes nobody wants in the
+    // window's start-up path, and most runs never ask for a folder at all.
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const chosen = await open({
+      directory: true,
+      multiple: false,
+      title: "选一个放谱面的文件夹",
+    });
+    return typeof chosen === "string" ? chosen : null;
+  },
+  list: () => invoke<OutputFile[]>("output_list"),
+  write: (name, bytes) => invoke<void>("output_write", { name, data: toBase64(bytes) }),
+  remove: (name) => invoke<void>("output_remove", { name }),
+  reveal: (name) => invoke<void>("output_reveal", { name }),
+  openDir: () => invoke<void>("output_open_dir"),
+};

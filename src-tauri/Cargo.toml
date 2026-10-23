@@ -11,8 +11,17 @@ rust-version = "1.77"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+# 便携版：数据放在 exe 旁边，不放系统的应用数据目录。见 src/main.rs 的
+# data_root()。普通构建不带这个 feature，行为不变。
+default = []
+portable = []
+
 [dependencies]
 tauri = { version = "2", features = [] }
+# Only for the "choose a folder" dialog on the settings page. Nothing else in
+# the app opens a system dialog, so this stays the single addition.
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # `bundled` compiles SQLite from source, so the app has no system dependency and
