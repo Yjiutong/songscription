@@ -156,18 +156,3 @@ WAIT_MS=8000 node scripts/smoke.mjs 9337 http://localhost:4173/
 
 `--dump-dom` is not enough on its own: virtual time does not wait for IndexedDB, so a snapshot taken
 that way is always one step early and always shows the skeleton.
-
----
-
-## Notes on this build
-
-- The interface and the code comments are written in Chinese. The design system lives in `DESIGN.md`
-  and takes the classical Chinese pairing of **cinnabar lacquer and gilding**: lacquer for the ground
-  (`#6E1B1A`), gold for the line (`#D9B24C`), rice paper for the pages (`#FBF6E9`), pine-soot ink for
-  the words (`#241A12`). This file stays in English as a translation of `README.md`.
-- This began as a web application — Next.js on a server, Supabase for the database and file storage.
-  It is now a desktop application; `db/schema.sql` remains as the readable record of the data model.
-- The shared-password gate went with the server. A password on a single-user desktop app protects
-  nothing: whoever is at the keyboard already has the files.
-- `screenshots/` is from the original web build. The interface is unchanged; the browser chrome in
-  those images is not part of the app any more.
